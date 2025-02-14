@@ -30,19 +30,16 @@
 <body>
   <h1>Sebas z'n codetaal decodeerder</h1>
   
-  <!-- Invoersectie -->
   <div class="section">
     <label for="inputText"><strong>Input:</strong></label>
     <textarea id="inputText" placeholder="Gecodeerde tekst hier..."></textarea>
     <button id="pasteButton">Paste</button>
   </div>
   
-  <!-- Decode knop -->
   <div class="section">
     <button id="decodeButton">Decoderen</button>
   </div>
   
-  <!-- Uitvoersectie -->
   <div class="section">
     <label for="outputText"><strong>Output:</strong></label>
     <textarea id="outputText" readonly placeholder="Hier verschijnt de vertaling..."></textarea>
@@ -50,7 +47,6 @@
   </div>
   
   <script>
-    // Hulpfuncties
     function shiftBack(letter) {
       if (letter === 'a') return 'z';
       return String.fromCharCode(letter.charCodeAt(0) - 1);
@@ -76,7 +72,6 @@
       return s === s.toUpperCase();
     }
     
-    // Groepeer de segmenten in groepen/woorden volgens het schema
     function groupSegments(segments) {
       let groups = [];
       let i = 0;
@@ -84,7 +79,7 @@
         let seg = segments[i];
         if (seg.length === 1) {
           if (!isLower(seg)) {
-            throw new Error("Schemafout: eencijferig segment '" + seg + "' moet een kleine letter zijn.");
+            throw new Error("Segment '" + seg + "' mag geen hoofdletter zijn.");
           }
           groups.push([seg]);
           i++;
@@ -94,7 +89,7 @@
             i++;
           } else if (isLower(seg)) {
             if (i + 1 >= segments.length) {
-              throw new Error("Schemafout: verwacht een volgend segment na een 2-letterig klein segment.");
+              throw new Error("Na segment '" + seg + "' hoort nog meer te komen.");
             }
             let seg2 = segments[i + 1];
             if (seg2.length === 1 && isLower(seg2)) {
@@ -105,11 +100,11 @@
               i += 2;
             } else if (seg2.length === 2 && isUpper(seg2)) {
               if (i + 2 >= segments.length) {
-                throw new Error("Schemafout: verwacht een segment na een 2-letterig hoofdlettersegment.");
+                throw new Error("Na segment '" + seg2 + "' hoort nog meer te komen.");
               }
               let seg3 = segments[i + 2];
               if (!(seg3.length === 2 && isLower(seg3))) {
-                throw new Error("Schemafout: verwacht 2 kleine letters na segment '" + seg2 + "', maar kreeg '" + seg3 + "'.");
+                throw new Error("Na segment '" + seg2 + "' 2 kleine letters verwacht, maar kreeg '" + seg3 + "'.");
               }
               groups.push([seg, seg2, seg3]);
               i += 3;
@@ -129,31 +124,29 @@
                   break;
                 }
                 if (!(candidate.length === 2 && isLower(candidate))) {
-                  throw new Error("Schemafout: tussen segmenten verwachtte 2 kleine letters, maar kreeg '" + candidate + "'.");
+                  throw new Error("Na segment '" + segments[i-1] + "' kunnen alleen 2 letters (beide moeten klein of groot) of 3 hoofdletters, maar kreeg '" + candidate + "'.");
                 }
                 group.push(candidate);
                 i++;
               }
               if (!foundTerminator) {
-                throw new Error("Schemafout: geen afsluitend segment gevonden voor groep met een 3-letterig klein segment als segment 2.");
+                throw new Error("Geen afsluitend segment gevonden na '" + seg2 + "'");
               }
               groups.push(group);
             } else {
-              throw new Error("Schemafout: ongeldig segment '" + seg2 + "' als segment 2.");
+              throw new Error("Ongeldig segment '" + seg2 + "'.");
             }
           } else {
-            throw new Error("Schemafout: 2-letterig segment '" + seg + "' voldoet niet aan de verwachte hoofdletter/kleineletter patronen.");
+            throw new Error("De hoofdletters kloppen niet bij '" + seg + "'.");
           }
         } else {
-          throw new Error("Schemafout: eerste segment '" + seg + "' van een groep mag geen 3 letters hebben.");
+          throw new Error("Eerste segment '" + seg + "' van een woord mag alleen 1 of 2 letters hebben.");
         }
       }
       return groups;
     }
     
-    // Decodeer een enkele zin
     function decodeSentence(sentence) {
-      // Vervang alle niet-alfabetische tekens door spaties.
       let cleaned = sentence.replace(/[^A-Za-z]/g, ' ');
       let segments = cleaned.split(/\s+/).filter(s => s.length > 0);
       if (segments.length === 0) return "";
@@ -161,10 +154,9 @@
       try {
         groups = groupSegments(segments);
       } catch (e) {
-        return "Fout bij het groeperen: " + e.message;
+        return "Iets klopt niet. " + e.message;
       }
       
-      // Zet alle segmenten om naar kleine letters
       groups = groups.map(group => group.map(seg => seg.toLowerCase()));
       
       let decodedWords = [];
@@ -178,7 +170,6 @@
           }
         }
         if (decodedSegments.length > 1) {
-          // Verplaats het eerste segment naar achteraan.
           decodedSegments = decodedSegments.slice(1).concat(decodedSegments[0]);
         }
         decodedWords.push(decodedSegments.join(''));
@@ -186,16 +177,13 @@
       return decodedWords.join(' ');
     }
     
-    // Maak hoofdletters na punten, uitroeptekens en vraagtekens
     function capitalizeSentences(text) {
       return text.replace(/(^|[.!?]\s+)([a-z])/g, function(match, p1, p2) {
         return p1 + p2.toUpperCase();
       });
     }
     
-    // Verwerk de hele tekst
     function decodeText(encodedText) {
-      // Splits de tekst in tokens: lettergroepen/spaties of overige karakters.
       let tokens = encodedText.match(/[A-Za-z ]+|[^A-Za-z]+/g);
       if (!tokens) return "";
       let result = tokens.map(token => {
@@ -208,7 +196,6 @@
       return capitalizeSentences(result);
     }
     
-    // Event listeners voor de knoppen
     document.getElementById('decodeButton').addEventListener('click', () => {
       const input = document.getElementById('inputText').value;
       const output = decodeText(input);
