@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Decodetaal Decoder</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      max-width: 800px;
+      margin: auto;
+    }
+    textarea {
+      width: 100%;
+      height: 150px;
+      margin: 10px 0;
+      font-size: 16px;
+      padding: 8px;
+    }
+    button {
+      margin-right: 10px;
+      padding: 8px 16px;
+      font-size: 16px;
+    }
+    .section {
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Decodetaal Decoder</h1>
+  
+  <!-- Invoersectie -->
+  <div class="section">
+    <label for="inputText"><strong>Invoertekst (gecodeerd):</strong></label>
+    <textarea id="inputText" placeholder="Gecodeerde tekst hier..."></textarea>
+    <button id="pasteButton">Paste</button>
+  </div>
+  
+  <!-- Decode knop -->
+  <div class="section">
+    <button id="decodeButton">Decoderen</button>
+  </div>
+  
+  <!-- Uitvoersectie -->
+  <div class="section">
+    <label for="outputText"><strong>Uitvoertekst (gedecodeerd):</strong></label>
+    <textarea id="outputText" readonly placeholder="Hier verschijnt de vertaling..."></textarea>
+    <button id="copyButton">Copy</button>
+  </div>
+  
+  <script>
+    // Hulpfuncties
+    function shiftBack(letter) {
+      if (letter === 'a') return 'z';
+      return String.fromCharCode(letter.charCodeAt(0) - 1);
+    }
+    
+    function undoSegmentShift(seg, isSingle = false) {
+      if (seg.length === 1) {
+        return isSingle ? shiftBack(seg) : seg;
+      } else if (seg.length === 2) {
+        return seg[0] + shiftBack(seg[1]);
+      } else if (seg.length === 3) {
+        return seg[0] + shiftBack(seg[1]) + seg[2];
+      } else {
+        throw new Error("Segment '" + seg + "' heeft een ongeldige lengte.");
+      }
+    }
+    
+    function isLower(s) {
+      return s === s.toLowerCase();
+    }
+    
+    function isUpper(s) {
+      return s === s.toUpperCase();
+    }
+    
+    // Groepeer de segmenten in groepen/woorden volgens het schema
+    function groupSegments(segments) {
+      let groups = [];
+      let i = 0;
+      while (i < segments.length) {
+        let seg = segments[i];
+        if (seg.length === 1) {
+          if (!isLower(seg)) {
+            throw new Error("Schemafout: eencijferig segment '" + seg + "' moet een kleine letter zijn.");
+          }
+          groups.push([seg]);
+          i++;
+        } else if (seg.length === 2) {
+          if (isUpper(seg)) {
+            groups.push([seg]);
+            i++;
+          } else if (isLower(seg)) {
+            if (i + 1 >= segments.length) {
+              throw new Error("Schemafout: verwacht een volgend segment na een 2-letterig klein segment.");
+            }
+            let seg2 = segments[i + 1];
+            if (seg2.length === 1 && isLower(seg2)) {
+              groups.push([seg, seg2]);
+              i += 2;
+            } else if (seg2.length === 2 && isLower(seg2)) {
+              groups.push([seg, seg2]);
+              i += 2;
+            } else if (seg2.length === 2 && isUpper(seg2)) {
+              if (i + 2 >= segments.length) {
+                throw new Error("Schemafout: verwacht een segment na een 2-letterig hoofdlettersegment.");
+              }
+              let seg3 = segments[i + 2];
+              if (!(seg3.length === 2 && isLower(seg3))) {
+                throw new Error("Schemafout: verwacht 2 kleine letters na segment '" + seg2 + "', maar kreeg '" + seg3 + "'.");
+              }
+              groups.push([seg, seg2, seg3]);
+              i += 3;
+            } else if (seg2.length === 3 && isUpper(seg2)) {
+              groups.push([seg, seg2]);
+              i += 2;
+            } else if (seg2.length === 3 && isLower(seg2)) {
+              let group = [seg, seg2];
+              i += 2;
+              let foundTerminator = false;
+              while (i < segments.length) {
+                let candidate = segments[i];
+                if ((candidate.length === 3 && isLower(candidate)) || (candidate.length === 2 && isUpper(candidate))) {
+                  group.push(candidate);
+                  i++;
+                  foundTerminator = true;
+                  break;
+                }
+                if (!(candidate.length === 2 && isLower(candidate))) {
+                  throw new Error("Schemafout: tussen segmenten verwachtte 2 kleine letters, maar kreeg '" + candidate + "'.");
+                }
+                group.push(candidate);
+                i++;
+              }
+              if (!foundTerminator) {
+                throw new Error("Schemafout: geen afsluitend segment gevonden voor groep met een 3-letterig klein segment als segment 2.");
+              }
+              groups.push(group);
+            } else {
+              throw new Error("Schemafout: ongeldig segment '" + seg2 + "' als segment 2.");
+            }
+          } else {
+            throw new Error("Schemafout: 2-letterig segment '" + seg + "' voldoet niet aan de verwachte hoofdletter/kleineletter patronen.");
+          }
+        } else {
+          throw new Error("Schemafout: eerste segment '" + seg + "' van een groep mag geen 3 letters hebben.");
+        }
+      }
+      return groups;
+    }
+    
+    // Decodeer een enkele zin
+    function decodeSentence(sentence) {
+      // Vervang alle niet-alfabetische tekens door spaties.
+      let cleaned = sentence.replace(/[^A-Za-z]/g, ' ');
+      let segments = cleaned.split(/\s+/).filter(s => s.length > 0);
+      if (segments.length === 0) return "";
+      let groups;
+      try {
+        groups = groupSegments(segments);
+      } catch (e) {
+        return "Fout bij het groeperen: " + e.message;
+      }
+      
+      // Zet alle segmenten om naar kleine letters
+      groups = groups.map(group => group.map(seg => seg.toLowerCase()));
+      
+      let decodedWords = [];
+      for (let group of groups) {
+        let decodedSegments = [];
+        for (let seg of group) {
+          if (group.length === 1) {
+            decodedSegments.push(undoSegmentShift(seg, true));
+          } else {
+            decodedSegments.push(undoSegmentShift(seg, false));
+          }
+        }
+        if (decodedSegments.length > 1) {
+          // Verplaats het eerste segment naar achteraan.
+          decodedSegments = decodedSegments.slice(1).concat(decodedSegments[0]);
+        }
+        decodedWords.push(decodedSegments.join(''));
+      }
+      return decodedWords.join(' ');
+    }
+    
+    // Maak hoofdletters na punten, uitroeptekens en vraagtekens
+    function capitalizeSentences(text) {
+      return text.replace(/(^|[.!?]\s+)([a-z])/g, function(match, p1, p2) {
+        return p1 + p2.toUpperCase();
+      });
+    }
+    
+    // Verwerk de hele tekst
+    function decodeText(encodedText) {
+      // Splits de tekst in tokens: lettergroepen/spaties of overige karakters.
+      let tokens = encodedText.match(/[A-Za-z ]+|[^A-Za-z]+/g);
+      if (!tokens) return "";
+      let result = tokens.map(token => {
+        if (/^[A-Za-z ]+$/.test(token)) {
+          return decodeSentence(token);
+        } else {
+          return token;
+        }
+      }).join('');
+      return capitalizeSentences(result);
+    }
+    
+    // Event listeners voor de knoppen
+    document.getElementById('decodeButton').addEventListener('click', () => {
+      const input = document.getElementById('inputText').value;
+      const output = decodeText(input);
+      document.getElementById('outputText').value = output;
+    });
+    
+    document.getElementById('pasteButton').addEventListener('click', async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        document.getElementById('inputText').value = text;
+      } catch (err) {
+        alert('Plakken is niet gelukt: ' + err);
+      }
+    });
+    
+    document.getElementById('copyButton').addEventListener('click', async () => {
+      try {
+        const text = document.getElementById('outputText').value;
+        await navigator.clipboard.writeText(text);
+        alert('Tekst gekopieerd naar klembord!');
+      } catch (err) {
+        alert('Kopiëren is niet gelukt: ' + err);
+      }
+    });
+  </script>
+</body>
+</html>
